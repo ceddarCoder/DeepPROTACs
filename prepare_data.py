@@ -39,13 +39,13 @@ class GraphData(InMemoryDataset):
     def __init__(self, name, root="data"):
         super().__init__(root)
         if name == "ligase_ligand":
-            self.data, self.slices = torch.load(self.processed_paths[0])
+            self.data, self.slices = torch.load(self.processed_paths[0], weights_only=False)
         elif name == "ligase_pocket":
-            self.data, self.slices = torch.load(self.processed_paths[1])
+            self.data, self.slices = torch.load(self.processed_paths[1], weights_only=False)
         elif name == "target_ligand":
-            self.data, self.slices = torch.load(self.processed_paths[2])
+            self.data, self.slices = torch.load(self.processed_paths[2], weights_only=False)
         elif name == "target_pocket":
-            self.data, self.slices = torch.load(self.processed_paths[3])
+            self.data, self.slices = torch.load(self.processed_paths[3], weights_only=False)
 
     @property
     def processed_file_names(self):

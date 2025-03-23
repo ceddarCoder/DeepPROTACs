@@ -3,7 +3,7 @@ import os
 from rdkit import Chem
 from torch_geometric.data import Batch
 import sys
-
+from torch.utils.data import Dataset
 
 path = sys.argv[1]
 
@@ -17,6 +17,7 @@ import pickle
 from torch.utils.data import DataLoader
 from torch_geometric.data import InMemoryDataset, Data
 from rdkit import Chem
+
 
 PROTEIN_ATOM_TYPE =['C','N','O','S']
 LIGAND_ATOM_TYPE = ['C','N','O','S','F','Cl','Br','I','P']
@@ -51,13 +52,13 @@ class GraphData(InMemoryDataset):
     def __init__(self, name, root="data"):
         super().__init__(root)
         if name == "ligase_ligand":
-            self.data, self.slices = torch.load(self.processed_paths[0])
+            self.data, self.slices = torch.load(self.processed_paths[0],weights_only=False)
         elif name == "ligase_pocket":
-            self.data, self.slices = torch.load(self.processed_paths[1])
+            self.data, self.slices = torch.load(self.processed_paths[1],weights_only=False)
         elif name == "target_ligand":
-            self.data, self.slices = torch.load(self.processed_paths[2])
+            self.data, self.slices = torch.load(self.processed_paths[2],weights_only=False)
         elif name == "target_pocket":
-            self.data, self.slices = torch.load(self.processed_paths[3])
+            self.data, self.slices = torch.load(self.processed_paths[3],weights_only=False)
 
     @property
     def processed_file_names(self):
@@ -69,7 +70,6 @@ class GraphData(InMemoryDataset):
                 ]
 
     def process(self):
-
         graph = mol2graph(f"{path}/ligase_ligand.mol2", LIGAND_ATOM_TYPE)
         ligase_ligand = [graph]
         data, slices = self.collate(ligase_ligand)
@@ -97,11 +97,7 @@ class GraphData(InMemoryDataset):
         with open(self.processed_paths[4],"wb") as f:
             pickle.dump(smiles,f)
     
-import torch
-from torch.utils.data import Dataset
-from torch_geometric.data import Batch
-
-
+# Modified collater function to include dummy labels and weights
 def collater(data_list):
     batch = {}
     ligase_ligand = [x["ligase_ligand"] for x in data_list]
@@ -117,7 +113,10 @@ def collater(data_list):
     batch["target_pocket"] = Batch.from_data_list(target_pocket)
     batch["smiles"] = torch.nn.utils.rnn.pad_sequence(smiles, batch_first=True)
     batch["smiles_length"] = smiles_length
-    return batch
+    
+    # For prediction, create a tuple of (inputs, labels, weights)
+    # where labels and weights are None since we're just predicting
+    return (batch, None, None)
 
 
 class PROTACSet(Dataset):
@@ -128,7 +127,6 @@ class PROTACSet(Dataset):
         self.target_ligand = target_ligand
         self.target_pocket = target_pocket
         self.smiles = smiles
-
 
     def __len__(self):
         return len(self.smiles)
@@ -143,13 +141,14 @@ class PROTACSet(Dataset):
         }
         return sample
 
+
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 root = f"{path}/data"
-ligase_ligand = GraphData("ligase_ligand",root)
-ligase_pocket = GraphData("ligase_pocket",root)
-target_ligand = GraphData("target_ligand",root)
-target_pocket = GraphData("target_pocket",root)
-with open(os.path.join(target_pocket.processed_dir, "smiles.pkl"),"rb") as f:
+ligase_ligand = GraphData("ligase_ligand", root)
+ligase_pocket = GraphData("ligase_pocket", root)
+target_ligand = GraphData("target_ligand", root)
+target_pocket = GraphData("target_pocket", root)
+with open(os.path.join(target_pocket.processed_dir, "smiles.pkl"), "rb") as f:
     smiles = pickle.load(f)
 
 test_set = PROTACSet(
@@ -162,14 +161,23 @@ test_set = PROTACSet(
 
 testloader = DataLoader(test_set, batch_size=1, collate_fn=collater)
 
-model = torch.load('model/test.pt')
-for data_sample in testloader:
-    outputs = model(data_sample['ligase_ligand'].to(device),
-                            data_sample['ligase_pocket'].to(device),
-                            data_sample['target_ligand'].to(device),
-                            data_sample['target_pocket'].to(device),
-                            data_sample['smiles'].to(device),
-                            data_sample['smiles_length'],)
+# Load the saved model
+# Load the saved model
+model = torch.load('model/workingmodels.pt', map_location=torch.device('cpu'), weights_only=False)
 
-    pred_y = torch.max(outputs,1)[1].item()
-    print(pred_y)
+# Set the model to evaluation mode
+model.model.eval()
+
+# Move the model to the appropriate device (CPU or GPU)
+model.model.to(device)
+
+# Use the overridden predict function - no need for the CustomPredictor
+predictions = model.predict(testloader)
+
+# Convert predictions to class labels
+predicted_classes = predictions.argmax(axis=1).tolist()
+
+
+# Print the predicted classes
+for i, pred in enumerate(predicted_classes):
+    print(f"Sample {i + 1}: Predicted class = {pred}")

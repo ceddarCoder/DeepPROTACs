@@ -33,7 +33,7 @@ def valids(model, test_loader, device):
 
 
 def train(model, lr=0.0001, epoch=30, train_loader=None, valid_loader=None, device=None, writer=None, LOSS_NAME=None, batch_size = None):
-    model = model.to(device)
+    #model = model.to(device)
     opt = torch.optim.Adam(model.parameters(), lr = lr)
     _ = valids(model, valid_loader, device)
     running_loss = 0.0
@@ -62,7 +62,7 @@ def train(model, lr=0.0001, epoch=30, train_loader=None, valid_loader=None, devi
         writer.add_scalar(LOSS_NAME+"_test_loss", val_loss, epo)
         writer.add_scalar(LOSS_NAME+"_test_acc", val_acc, epo)
         writer.add_scalar(LOSS_NAME+"_test_auroc", auroc, epo)
-
+    
         logging.info(f'Valid epoch {epo} loss:{val_loss}, acc: {val_acc}, auroc: {auroc}')
         running_loss = 0.0
 
